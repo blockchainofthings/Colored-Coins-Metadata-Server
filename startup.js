@@ -53,6 +53,12 @@ folders.forEach(function (dir) {
   }
 })
 
+// Trap unhandled exceptions to avoid application from aborting its processing
+process.on('uncaughtException', (err) => {
+    logger.error('Unhandled exception.', err);
+    logger.debug('Continue processing...');
+});
+
 server.http_server.listen(server.port, properties.server.hostname, function (err) {
   if (err) {
     logger.info('Critical Error so killing server - ' + err)
