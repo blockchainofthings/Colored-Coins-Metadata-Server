@@ -54,7 +54,31 @@ Seeder.prototype.seed = function () {
               function (result, cb) {
                 torrentHash = result.torrentHash.toString('hex')
                 logger.debug('Added file to BitTorrent network, torrentHash: ', torrentHash, ' - #', index)
-                self.handler.shareMetadata(torrentHash, cb)
+                try {
+                  self.handler.shareMetadata(torrentHash, function (err, result) {
+                    if (err) {
+                      // Try to remove metadata that might have already been inserted
+                      try {
+                        self.handler.removeMetadata(torrentHash, function dummy() {
+                        });
+                      }
+                      catch(err) {}
+                      cb(err);
+                    }
+                    else {
+                      cb(null, result);
+                    }
+                  })
+                }
+                catch (err) {
+                  // Try to remove metadata that might have already been inserted
+                  try {
+                    self.handler.removeMetadata(torrentHash, function dummy() {
+                    });
+                  }
+                  catch(err) {}
+                  cb(err);
+                }
               },
               function (result, cb) {
                 logger.debug('Started seeding, torrentHash: ', torrentHash, ' - #', index)
@@ -63,7 +87,12 @@ Seeder.prototype.seed = function () {
               function (cb) {
                 logger.debug('Remove torrent, torrentHash: ', torrentHash, ' - #', index)
                 // stop seeding current files (otherwise they'll keep open I\O connections and re-announce)
-                self.handler.removeMetadata(torrentHash, cb)
+                try {
+                    self.handler.removeMetadata(torrentHash, cb)
+                }
+                catch (err) {
+                  cb(err);
+                }
               }
             ],
             function (err) {
