@@ -32,13 +32,13 @@ var Storage = require(path.join(__dirname, '/../app/modules/storage.js'))
 var storage = new Storage(properties)
 
 var verifyCallback = function (jwtToken, req, res, next) {
-  if (!properties.JWT.jwtTokenSecret) {
+  if (!properties.JWT.user || !properties.JWT.jwtTokenSecret) {
     return next()
   }
   try {
     var decoded = jwt.decode(jwtToken, properties.JWT.jwtTokenSecret)
     var expiration = Date.parse(decoded.exp)
-    if (expiration > Date.now()) {
+    if (expiration > Date.now() && properties.JWT.user === decoded.iss) {
       req.user = decoded.iss
     }
   } catch (e) {
@@ -48,7 +48,7 @@ var verifyCallback = function (jwtToken, req, res, next) {
 }
 
 var accessCallback = function (req, res, next) {
-  if (!properties.JWT.jwtTokenSecret) {
+  if (!properties.JWT.user || !properties.JWT.jwtTokenSecret) {
     return next() // if no JWT secret is provided, consider this a public end-point
   }
   next(['Unauthorized', 401])

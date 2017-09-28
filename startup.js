@@ -8,8 +8,8 @@ var fs = require('graceful-fs')
 
 var torrentProperties = {
   client: {
-    // torrentPort: 13231,
-    // dhtPort: 20000,
+    torrentPort: properties.torrent.torrentPort,
+    dhtPort: properties.torrent.dhtPort,
   // Enable DHT (default=true), or options object for DHT
     dht: true,
   // Max number of peers to connect to per torrent (default=100)
