@@ -53,7 +53,7 @@ folders.forEach(function (dir) {
   }
 })
 
-server.http_server.listen(server.port, function (err) {
+server.http_server.listen(server.port, properties.server.hostname, function (err) {
   if (err) {
     logger.info('Critical Error so killing server - ' + err)
     casimir.running = false
