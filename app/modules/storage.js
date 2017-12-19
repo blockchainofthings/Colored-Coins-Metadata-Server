@@ -43,4 +43,11 @@ Storage.prototype.getFile = function (filename, cb) {
   throw new Error('Storage type not configured')
 }
 
+Storage.prototype.deleteFile = function (filename, cb) {
+    if (this.s3Client) {
+        return this.s3Client.deleteFile(filename, cb)
+    }
+    throw new Error('Storage type not configured')
+}
+
 module.exports = Storage

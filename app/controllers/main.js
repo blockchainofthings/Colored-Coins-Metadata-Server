@@ -4,7 +4,7 @@ var logger = casimir.logger
 var storage = casimir.storage
 
 handler.on('error', function (err) {
-  logger.error(err)
+  logger.error('>>>>>>', err)
 })
 
 var getMetadata = function (req, res, next) {
@@ -57,9 +57,45 @@ var shareMetadata = function (req, res, next) {
       return next(['Can\'t share metadata', 400])
     }
     logger.info('shareMetadata:', req.data.torrentHash)
-    return res.sendStatus(200)
+    return res.status(200).end();
   })
 }
+
+var removeMetadata = function (req, res, next) {
+  try {
+    handler.removeMetadata(req.data.torrentHash, removeResult)
+  }
+  catch (err) {
+    if (err.message.startsWith('No torrent with id ')) {
+      // Error because torrent does not exist. It might be that it has already been
+      //  (temporarily) removed by the seeding procedure. So just continue processing
+      logger.info('removeMetadata - torrent not found to be removed');
+      removeResult();
+    }
+    else {
+      removeResult(err);
+    }
+  }
+
+  function removeResult(err) {
+    if (err) {
+      logger.error('removeMetadata - err = ', err);
+      return next(['Can\'t remove metadata', 400]);
+    }
+    try {
+      storage.deleteFile(req.data.torrentHash + '.ccm', function (err) {
+        if (err) logger.error(err);
+        else {
+          logger.info('Deleted File');
+          res.status(200).end();
+        }
+      })
+    } catch (e) {
+      logger.error('deleteMetadata - e = ', e);
+      return next(['Can\'t delete metadata file from storage', 400]);
+    }
+  }
+};
 
 var isRunning = function (req, res, next) {
   if (casimir.running) {
@@ -73,5 +109,6 @@ module.exports = {
   getMetadata: getMetadata,
   addMetadata: addMetadata,
   shareMetadata: shareMetadata,
+  removeMetadata: removeMetadata,
   isRunning: isRunning
 }

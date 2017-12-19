@@ -42,4 +42,11 @@ S3Storage.prototype.getFile = function (filename, cb) {
   }, cb)
 }
 
+S3Storage.prototype.deleteFile = function (filename, cb) {
+    return this.s3Client.deleteObject({
+        Bucket: this.bucket, /* required */
+        Key: filename /* required */
+    }, cb)
+}
+
 module.exports = S3Storage

@@ -2,5 +2,9 @@
   "/shareMetadata": {
     "function_name": "main.shareMetadata",
     "params": ["torrentHash"]
+  },
+  "/removeMetadata": {
+    "function_name": "main.removeMetadata",
+    "params": ["torrentHash"]
   }
 }

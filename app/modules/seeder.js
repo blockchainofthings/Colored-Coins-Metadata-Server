@@ -6,6 +6,8 @@ var logger = casimir.logger
 var EventEmitter = require('events').EventEmitter
 EventEmitter.defaultMaxListeners = 0
 
+var once = require('once');
+
 var Seeder = function (properties) {
   logger.info('Seeder: properties =', properties)
   this.seedBulkSize = parseInt(properties.seedBulkSize, 10)
@@ -25,90 +27,137 @@ Seeder.prototype.seed = function () {
     var done = false // did we iterate over all our storage keys
     var totalIndex = 0
     async.whilst(
-      function () { return !done },
+      function () {
+        return !done
+      },
       function (callback) {
-        storage.listKeys({maxKeys: self.seedBulkSize, marker: marker}, function (err, res) {
-          if (err) return callback(err)
-          var keys = res.keys
-          done = res.done
-          fs.writeFileSync('./localdata/marker.txt', keys[0])
-          logger.info('Seeding keys ' + totalIndex + ' - ' + (totalIndex + res.keys.length))
-          logger.info('marker =', keys[0])
-          marker = done ? null : keys[keys.length - 1]
-          async.eachOf(keys, function (key, index, cb) {
-            var torrentHash
-            index += totalIndex
-            async.waterfall([
-              function (cb) {
-                logger.debug('Getting file from S3, file name: ', key, ' - #', index)
-                storage.getFile(key, cb)
-              },
-              function (data, cb) {
-                if (!data || !data.Body) {
-                  return cb(new Error('get_file_from_s3: no data'))
-                }
-                logger.debug('Got file from S3, file name: ', key, ' - #', index)
-                data = JSON.parse(data.Body.toString())
-                self.handler.addMetadata(data, cb)
-              },
-              function (result, cb) {
-                torrentHash = result.torrentHash.toString('hex')
-                logger.debug('Added file to BitTorrent network, torrentHash: ', torrentHash, ' - #', index)
+        callback = once(callback);
+        try {
+          storage.listKeys({maxKeys: self.seedBulkSize, marker: marker}, function (err, res) {
+            if (err) return callback(err)
+            var keys = res.keys
+            done = res.done
+            fs.writeFileSync('./localdata/marker.txt', keys[0])
+            logger.info('Seeding keys ' + totalIndex + ' - ' + (totalIndex + res.keys.length))
+            logger.info('marker =', keys[0])
+            marker = done ? null : keys[keys.length - 1]
+            async.eachOf(keys, function (key, index, cb) {
+                cb = once(cb);
                 try {
-                  self.handler.shareMetadata(torrentHash, function (err, result) {
-                    if (err) {
-                      // Try to remove metadata that might have already been inserted
-                      try {
-                        self.handler.removeMetadata(torrentHash, function dummy() {
-                        });
+                  var torrentHash
+                  index += totalIndex
+                  async.waterfall([
+                      function (cb) {
+                        cb = once(cb);
+                        try {
+                          logger.debug('Getting file from S3, file name: ', key, ' - #', index)
+                          storage.getFile(key, cb)
+                        }
+                        catch (err) {
+                          cb(err);
+                        }
+                      },
+                      function (data, cb) {
+                        cb = once(cb);
+                        try {
+                          if (!data || !data.Body) {
+                            return cb(new Error('get_file_from_s3: no data'))
+                          }
+                          logger.debug('Got file from S3, file name: ', key, ' - #', index)
+                          data = JSON.parse(data.Body.toString())
+                          self.handler.addMetadata(data, cb)
+                        }
+                        catch (err) {
+                          logger.debug('>>> Here');
+                          cb(err);
+                        }
+                      },
+                      function (result, cb) {
+                        cb = once(cb);
+                        try {
+                          torrentHash = result.torrentHash.toString('hex')
+                          logger.debug('Added file to BitTorrent network, torrentHash: ', torrentHash, ' - #', index)
+                          try {
+                            self.handler.shareMetadata(torrentHash, function (err, result) {
+                              if (err) {
+                                // Try to remove metadata that might have already been inserted
+                                try {
+                                  self.handler.removeMetadata(torrentHash, function dummy() {
+                                  });
+                                }
+                                catch (err) {
+                                }
+                                cb(err);
+                              }
+                              else {
+                                cb(null, result);
+                              }
+                            })
+                          }
+                          catch (err) {
+                            // Try to remove metadata that might have already been inserted
+                            try {
+                              self.handler.removeMetadata(torrentHash, function dummy() {
+                              });
+                            }
+                            catch (err) {
+                            }
+                            cb(err);
+                          }
+                        }
+                        catch (err) {
+                          cb(err);
+                        }
+                      },
+                      function (result, cb) {
+                        cb = once(cb);
+                        try {
+                          logger.debug('Started seeding, torrentHash: ', torrentHash, ' - #', index)
+                          setTimeout(cb, self.seedBulkIntervalInMs)
+                        }
+                        catch (err) {
+                          cb(err);
+                        }
+                      },
+                      function (cb) {
+                        cb = once(cb);
+                        try {
+                          logger.debug('Remove torrent, torrentHash: ', torrentHash, ' - #', index)
+                          // stop seeding current files (otherwise they'll keep open I\O connections and re-announce)
+                          try {
+                            self.handler.removeMetadata(torrentHash, cb)
+                          }
+                          catch (err) {
+                            cb(err);
+                          }
+                        }
+                        catch (err) {
+                          cb(err);
+                        }
                       }
-                      catch(err) {}
-                      cb(err);
-                    }
-                    else {
-                      cb(null, result);
-                    }
-                  })
-                }
-                catch (err) {
-                  // Try to remove metadata that might have already been inserted
-                  try {
-                    self.handler.removeMetadata(torrentHash, function dummy() {
-                    });
-                  }
-                  catch(err) {}
-                  cb(err);
-                }
-              },
-              function (result, cb) {
-                logger.debug('Started seeding, torrentHash: ', torrentHash, ' - #', index)
-                setTimeout(cb, self.seedBulkIntervalInMs)
-              },
-              function (cb) {
-                logger.debug('Remove torrent, torrentHash: ', torrentHash, ' - #', index)
-                // stop seeding current files (otherwise they'll keep open I\O connections and re-announce)
-                try {
-                    self.handler.removeMetadata(torrentHash, cb)
+                    ],
+                    function (err) {
+                      if (err) {
+                        logger.error('Error while seeding torrentHash: ', err)
+                        return cb(err)
+                      }
+                      logger.debug('Finished for torrentHash: ', torrentHash, ' - #', index)
+                      cb()
+                    })
                 }
                 catch (err) {
                   cb(err);
                 }
-              }
-            ],
-            function (err) {
-              if (err) {
-                logger.error('Error while seeding torrentHash: ', err)
-                return cb(err)
-              }
-              logger.debug('Finished for torrentHash: ', torrentHash, ' - #', index)
-              cb()
-            })
-          },
-          function (err) {
-            totalIndex += self.seedBulkSize
-            callback(err)
+              },
+              function (err) {
+                totalIndex += self.seedBulkSize
+                callback(err)
+              })
           })
-        })
+        }
+        catch (err) {
+          callback(err);
+        }
       },
       function (err) {
         if (err) {
